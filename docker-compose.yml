@@ -1,0 +1,75 @@
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2.0
+    container_name: pni-mosquitto
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - mosquitto-data:/mosquitto/data
+      - mosquitto-logs:/mosquitto/log
+    networks:
+      - pni-network
+    restart: unless-stopped
+
+  policy:
+    build:
+      context: .
+      dockerfile: policy.Dockerfile
+    image: pni/policy-service:v1.0.0
+    container_name: pni-policy-service
+    environment:
+      GOVERNANCE_MODE: strict
+      SERVICE_PORT: 8080
+    ports:
+      - "8080:8080"
+    depends_on:
+      - mosquitto
+    networks:
+      - pni-network
+    restart: unless-stopped
+
+  hub:
+    build:
+      context: .
+      dockerfile: ingest.Dockerfile
+    image: pni/ingest-hub:v1.0.0
+    container_name: pni-ingest-hub
+    environment:
+      MQTT_BROKER: mosquitto:1883
+      POLICY_SERVICE_URL: http://policy:8080
+      INGEST_PORT: 8081
+    ports:
+      - "8081:8081"
+    depends_on:
+      - mosquitto
+      - policy
+    networks:
+      - pni-network
+    restart: unless-stopped
+
+  edge:
+    build:
+      context: .
+      dockerfile: edge.Dockerfile
+    image: pni/edge-agent:v1.0.0
+    container_name: pni-edge-agent
+    environment:
+      DEVICE_ID: edge-device-staging-001
+      GOVERNANCE_MODE: strict
+      MQTT_BROKER: mosquitto:1883
+      POLICY_SERVICE_URL: http://policy:8080
+    depends_on:
+      - mosquitto
+      - policy
+    networks:
+      - pni-network
+    restart: unless-stopped
+
+networks:
+  pni-network:
+    driver: bridge
+
+volumes:
+  mosquitto-data:
+  mosquitto-logs:
